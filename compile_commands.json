@@ -1,0 +1,26 @@
+[
+{
+  "directory": "/home/ashish/atp/build/udp_hole_punch",
+  "command": "/usr/bin/c++   -std=gnu++20 -o CMakeFiles/peer.dir/peer.cc.o -c /home/ashish/atp/udp_hole_punch/peer.cc",
+  "file": "/home/ashish/atp/udp_hole_punch/peer.cc",
+  "output": "udp_hole_punch/CMakeFiles/peer.dir/peer.cc.o"
+},
+{
+  "directory": "/home/ashish/atp/build/udp_hole_punch",
+  "command": "/usr/bin/c++   -std=gnu++20 -o CMakeFiles/peer.dir/stun.cc.o -c /home/ashish/atp/udp_hole_punch/stun.cc",
+  "file": "/home/ashish/atp/udp_hole_punch/stun.cc",
+  "output": "udp_hole_punch/CMakeFiles/peer.dir/stun.cc.o"
+},
+{
+  "directory": "/home/ashish/atp/build/poc",
+  "command": "/usr/bin/c++   -std=gnu++20 -o CMakeFiles/recv.dir/recv.cc.o -c /home/ashish/atp/poc/recv.cc",
+  "file": "/home/ashish/atp/poc/recv.cc",
+  "output": "poc/CMakeFiles/recv.dir/recv.cc.o"
+},
+{
+  "directory": "/home/ashish/atp/build/poc",
+  "command": "/usr/bin/c++   -std=gnu++20 -o CMakeFiles/recv.dir/stun.cc.o -c /home/ashish/atp/poc/stun.cc",
+  "file": "/home/ashish/atp/poc/stun.cc",
+  "output": "poc/CMakeFiles/recv.dir/stun.cc.o"
+}
+]
