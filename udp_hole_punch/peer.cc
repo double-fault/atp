@@ -14,12 +14,12 @@ void foo(int sockfd, struct sockaddr_in* peer_addr)
 {
     puts("in foo");
     int counter = 0;
-    char buf_to_send[20];
+    char buf_to_send[40];
 
     int i = 0;
 
     for (;;) {
-        sprintf(buf_to_send, "hi %d\n", counter++);
+        sprintf(buf_to_send, "hi sankul %d\n", counter++);
 
         sendto(sockfd, buf_to_send, strlen(buf_to_send), 0, 
                 (struct sockaddr*)peer_addr, sizeof(struct sockaddr_in));
@@ -45,8 +45,6 @@ void foo(int sockfd, struct sockaddr_in* peer_addr)
                 continue;
             }
             perror("recvfrom");
-        } else {
-            assert(6 > 7);
         }
 
         recv_buf[ret] = '\0';
