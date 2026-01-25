@@ -1,0 +1,6 @@
+[submodule "fmt"]
+	path = fmt
+	url = git@github.com:fmtlib/fmt.git
+[submodule "plog"]
+	path = plog
+	url = git@github.com:SergiusTheBest/plog.git

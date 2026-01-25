@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) 
 
+add_subdirectory(plog)
+add_subdirectory(fmt)
+
+add_subdirectory(libs/stun)
 add_subdirectory(udp_hole_punch)
 add_subdirectory(poc)
 

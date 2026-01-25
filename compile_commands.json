@@ -1,5 +1,23 @@
 [
 {
+  "directory": "/home/ashish/atp/build/fmt",
+  "command": "/usr/bin/c++  -I/home/ashish/atp/fmt/include -std=gnu++20 -o CMakeFiles/fmt.dir/src/format.cc.o -c /home/ashish/atp/fmt/src/format.cc",
+  "file": "/home/ashish/atp/fmt/src/format.cc",
+  "output": "fmt/CMakeFiles/fmt.dir/src/format.cc.o"
+},
+{
+  "directory": "/home/ashish/atp/build/fmt",
+  "command": "/usr/bin/c++  -I/home/ashish/atp/fmt/include -std=gnu++20 -o CMakeFiles/fmt.dir/src/os.cc.o -c /home/ashish/atp/fmt/src/os.cc",
+  "file": "/home/ashish/atp/fmt/src/os.cc",
+  "output": "fmt/CMakeFiles/fmt.dir/src/os.cc.o"
+},
+{
+  "directory": "/home/ashish/atp/build/libs/stun",
+  "command": "/usr/bin/c++  -I/home/ashish/atp/libs/stun -I/home/ashish/atp/plog/include -I/home/ashish/atp/fmt/include -std=gnu++20 -o CMakeFiles/stun.dir/stun/stun.cc.o -c /home/ashish/atp/libs/stun/stun/stun.cc",
+  "file": "/home/ashish/atp/libs/stun/stun/stun.cc",
+  "output": "libs/stun/CMakeFiles/stun.dir/stun/stun.cc.o"
+},
+{
   "directory": "/home/ashish/atp/build/udp_hole_punch",
   "command": "/usr/bin/c++   -std=gnu++20 -o CMakeFiles/peer.dir/peer.cc.o -c /home/ashish/atp/udp_hole_punch/peer.cc",
   "file": "/home/ashish/atp/udp_hole_punch/peer.cc",
