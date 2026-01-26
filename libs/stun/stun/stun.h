@@ -1,10 +1,13 @@
 #pragma once
 
 #include <string>
+#include <set>
 #include <vector>
 
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 
 // Keep sending stun packets to keep NAT binding alive??
 // Is there a need to multiplex STUN packets with normal application packets?
@@ -33,9 +36,14 @@
 // Reference: RFC 5389
 namespace Stun {
 
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
+#define THROW(message) throw std::runtime_error(#message)
+
 #define THROW_IF(condition)                       \
     do {                                          \
-        if (condition)                            \
+        if (unlikely(condition))                  \
             throw std::runtime_error(#condition); \
     } while (false)
 
@@ -78,11 +86,25 @@ namespace kAttribute {
 }
 
 // All structs are maintained in host byte order when in memory
+
+struct __attribute__((packed)) TransactionId {
+    uint8_t mId[12];
+
+    bool operator==(const TransactionId&) const = default;
+    bool operator<(const TransactionId& other) const {
+        for (int i = 0; i < 12; i++) {
+            if (mId[i] != other.mId[i])
+                return mId[i] < other.mId[i];
+        }
+        return false;
+    }
+};
+
 struct __attribute__((packed)) Header {
     uint16_t mMessageType;
     uint16_t mMessageLength;
     uint32_t mMagicCookie;
-    uint8_t mTransactionId[12];
+    TransactionId mTransactionId;
 };
 
 // RFC 5389: "Each STUN attribute MUST end on a 32-bit boundary"
@@ -112,14 +134,14 @@ public:
 
     const void* GetMessage() const;
     size_t GetMessageSize() const;
-    uint8_t* GetTransactionId() const;
+    TransactionId GetTransactionId() const;
 
 private:
     void* mMessage;
     size_t mLength;
 };
 
-// Assumes a well-formed STUN message
+// Assumes a well-formed STUN message, can throw otherwise
 class MessageReader final {
 public:
     MessageReader(const void* buffer, size_t length);
@@ -153,36 +175,75 @@ enum class NatType {
 
 class Client final {
 public:
+    struct Timeout {
+        uint64_t mTimeoutMs;
+        uint64_t mMaxRetransmissions;
+        uint64_t mFinalTimeoutMultiplier;
+    };
+
     Client(int sockfd);
-    Client(int sockfd, const std::vector<Endpoint>& servers);
+    Client(int sockfd, const std::vector<Endpoint>& servers, Timeout timeout);
     ~Client() = default;
 
-    int QueryAllServers(struct sockaddr* reflexiveAddress, socklen_t* reflexiveAddressLength);
-    NatType GetNatType();
+    int QueryAllServers();
+    NatType GetNatType() const;
+    int GetReflexiveAddress(struct sockaddr* reflexiveAddress,
+        socklen_t* reflexiveAddressLength) const;
 
-    int QuerySingleServer(struct sockaddr* reflexiveAddress, socklen_t* reflexiveAddressLength);
+    void InvalidateReflexiveAddress();
 
-    void InvalidateBinding();
-
-    int SendRequest(uint8_t* transactionId); // Sends to a random server in the list
-    int SendRequest(const struct sockaddr* serverAddress,
-        socklen_t serverAddressLength, uint8_t* transactionId);
-
-    int ParseMessage(const void* message, size_t length);
-    int ParseMessage(void* message, size_t length,
-        struct sockaddr* reflexiveAddress,
-        socklen_t* reflexiveAddressLength);
+    // Using these, you can multiplex keepalive messages with other data
+    int NatKeepAliveSend();
+    int NatKeepAliveReceive(const void* message, size_t length);
 
 private:
-    const std::vector<Endpoint> kDefaultServers = {
+    struct OngoingTransaction {
+        uint64_t mSendTimeMs;
+        TransactionId mTransactionId;
+
+        bool operator<(const OngoingTransaction& other) const
+        {
+            if (mSendTimeMs != other.mSendTimeMs)
+                return mSendTimeMs < other.mSendTimeMs;
+            return mTransactionId < other.mTransactionId;
+        }
+    };
+
+    inline static const std::vector<Endpoint> kDefaultServers {
         { "stun.l.google.com", "19302" },
         { "stun.freeswitch.org", "3478" },
         { "stun.voip.blackberry.com", "3478" }
     };
 
+    inline static const Timeout kDefaultTimeout {
+        .mTimeoutMs = 500,
+        .mMaxRetransmissions = 7,
+        .mFinalTimeoutMultiplier = 16
+    };
+
+    // Path MTU is unknown, so 576 is the safe value
+    inline static const uint32_t kMtu { 576 };
+
+    int SendRequest(const struct sockaddr* serverAddress,
+        socklen_t serverAddressLength, TransactionId* transactionId);
+
+    // ProcessResponse rejects a message if the transaction id does not
+    // match the id of any of the live transactions, sent from SendRequest
+    int ProcessResponse(const void* message, size_t length,
+        TransactionId* transactionId);
+
+    uint64_t GetTimeMs() const;
+    void AddNewTransaction(TransactionId id);
+    bool EraseTransactionIfExists(TransactionId id);
+    void PurgeStaleTransactions();
+
     int mSockfd;
     const std::vector<Endpoint> mServers;
     NatType mNatType;
+
+    Timeout mTimeout; // RTO = Retransmission TimeOut
+    uint64_t mStunTtlMs;
+    std::set<OngoingTransaction> mOngoingTransactions;
 
     // Current code only support IPv4, although I have tried to make
     // the function signatures protocol-independent

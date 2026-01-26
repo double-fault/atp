@@ -11,6 +11,8 @@ add_subdirectory(plog)
 add_subdirectory(fmt)
 
 add_subdirectory(libs/stun)
+add_subdirectory(stunc)
+
 add_subdirectory(udp_hole_punch)
 add_subdirectory(poc)
 
