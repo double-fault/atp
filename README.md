@@ -15,4 +15,6 @@ TODO:
 1. Check RFC8445 - ICE.
 2. Get LAN working. Test setup: one interface thru lan (NKN), wifi through mobile data.
 3. Do further survey of from where to where udp hole punching works.
+4. libs/stun code review, keepalive testing, actual unit tests(?)
+5. Try using claude/cursor to generate full atp as an experiment? :skull:
 
