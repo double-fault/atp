@@ -2,7 +2,7 @@
 #include "common.h"
 #include "eventcore.h"
 #include "isignalling.h"
-#include "protocol.h"
+#include "types.h"
 
 #include <netinet/in.h>
 #include <strings.h>
@@ -17,7 +17,7 @@ Context::Context(ISignallingProvider* signallingProvider)
     : mSignallingProvider { signallingProvider }
     , mEventCore()
 {
-    mSockets.reserve(kMaxSocketCount);
+    mSockets.reserve(Config::kMaxSocketCount);
 
     mEventLoopThread = std::thread(&EventCore::Run, &mEventCore);
 }
@@ -28,7 +28,7 @@ int Context::Socket(int domain, int type, int protocol)
         return +Error::AFNOSUPPORT;
     if (type != SOCK_STREAM || protocol != IPPROTO_ATP)
         return +Error::PROTONOSUPPORT;
-    if (mSockets.size() == kMaxSocketCount)
+    if (mSockets.size() == Config::kMaxSocketCount)
         return +Error::MAXSOCKETS;
 
     int returnCode = -1;
@@ -46,8 +46,9 @@ int Context::Socket(int domain, int type, int protocol)
         return +ErrnoToErrorCode(errno); // TODO: Add socketpair() errno vals to Error enum class
     }
 
-    SocketData data;
-    SocketData* ptr;
+    SocketData data, *ptr;
+    data.mState = State::CLOSED;
+
     data.mApplicationFd = fds[0];
     data.mAtpFd = fds[1];
     data.mNetworkFd = networkFd;

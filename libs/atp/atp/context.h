@@ -26,6 +26,7 @@
 
 #include "eventcore.h"
 #include "isignalling.h"
+#include "types.h"
 #include "protocol.h"
 #include "common.h"
 
@@ -83,7 +84,11 @@ public:
     int Shutdown(...) = delete;
 
 private:
+    // Should SocketData be moved out of Context into global scope?
+    // TODO: Rename to socket control block = SCB?
     struct SocketData {
+        State mState;
+
         // NOTE: Layering:
         // (1) Application
         // =    (Application FD) -- |

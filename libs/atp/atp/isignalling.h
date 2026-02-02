@@ -7,7 +7,7 @@
 #include <sys/types.h>
 
 #include "eventcore.h"
-#include "protocol.h"
+#include "types.h"
 
 namespace Atp {
 

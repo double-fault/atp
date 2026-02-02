@@ -2,7 +2,7 @@
 
 #include "eventcore.h"
 #include "isignalling.h"
-#include "protocol.h"
+#include "types.h"
 
 namespace Atp {
 

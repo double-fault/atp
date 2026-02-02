@@ -1,5 +1,8 @@
 #pragma once 
 
+#include <cstddef>
+#include <stdexcept>
+
 namespace Atp {
 
 #define likely(x) __builtin_expect(!!(x), 1)
@@ -14,5 +17,11 @@ namespace Atp {
     } while (false)
 
 using mseconds_t = int;
+
+namespace Config {
+    static constexpr mseconds_t kNatKeepAliveTimeout = 5000;
+    static constexpr size_t kMaxSocketCount = 32;
+};
+
 
 }
