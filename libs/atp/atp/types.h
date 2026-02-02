@@ -16,6 +16,8 @@ struct sockaddr_atp {
 };
 
 enum class Error : int {
+    SUCCESS = 0,
+    UNKNOWN = -1,
     ACCESS = -2, 
     AFNOSUPPORT = -3,
     INVAL = -4, 

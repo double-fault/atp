@@ -29,6 +29,7 @@
 #include "types.h"
 #include "protocol.h"
 #include "common.h"
+#include "socket.h"
 
 #include <stun/stun.h>
 
@@ -36,6 +37,7 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <thread>
+#include <unordered_map>
 
 namespace Atp {
 
@@ -112,19 +114,13 @@ private:
         EventCore::callback_ident_t mSignallingRecvCallback;
     };
 
-    // TODO: Allow setting custom keepalive frequency/time gap through 
-    // setsockopt.
-    mseconds_t NatKeepAliveCallback(epoll_data_t data);
-
-    mseconds_t ApplicationRecvCallback(epoll_data_t data);
     mseconds_t NetworkRecvCallback(epoll_data_t data);
 
     ISignallingProvider* mSignallingProvider;
     EventCore mEventCore;
     std::thread mEventLoopThread;
 
-    std::vector<SocketData> mSockets;
-    std::unordered_map<int, SocketData*> mFdToSocket;
+    std::unordered_map<int, SocketImpl> mSockets; // application fd -> socket impl
     std::set<int> mApplicationFds;
 };
 

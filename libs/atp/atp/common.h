@@ -21,6 +21,7 @@ using mseconds_t = int;
 namespace Config {
     static constexpr mseconds_t kNatKeepAliveTimeout = 5000;
     static constexpr size_t kMaxSocketCount = 32;
+    static constexpr size_t kMaxBacklog = 64;
 };
 
 
