@@ -25,7 +25,7 @@
 #pragma once
 
 #include "eventcore.h"
-#include "isignalling.h"
+#include "signalling.h"
 #include "types.h"
 #include "protocol.h"
 #include "common.h"

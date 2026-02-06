@@ -1,11 +1,13 @@
 #include "socket.h"
 #include "common.h"
 #include "eventcore.h"
-#include "isignalling.h"
+#include "protocol.h"
+#include "signalling.h"
 #include "types.h"
 
 #include <memory>
 #include <strings.h>
+#include <sys/epoll.h>
 
 namespace Atp {
 
@@ -19,99 +21,132 @@ std::expected<SocketImpl, Error> SocketImpl::Create(EventCore* eventCore,
     if (networkFd == -1)
         return std::unexpected(ErrnoToErrorCode(errno));
 
-    int fds[2];
-    errno = 0;
-    int ret = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
-    if (ret == -1) {
-        close(networkFd);
+    /* Members are initialized in the same order as their declarations in the header */
 
-        // TODO: Add socketpair() errno vals to Error enum class
+    SocketImpl newsock;
+    newsock.mState = State::CLOSED;
+    newsock.mEventCore = eventCore;
+
+    errno = 0;
+    newsock.mApplicationFd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (newsock.mApplicationFd == -1) {
+        close(networkFd);
         return std::unexpected(ErrnoToErrorCode(errno));
     }
 
-    SocketImpl socket;
-    socket.mEventCore = eventCore;
-    socket.mSignallingProvider = signallingProvider;
+    newsock.mAtpFd = 0;
+    newsock.mNetworkFd = networkFd;
 
-    socket.mState = State::CLOSED;
+    newsock.mDemux = std::make_shared<Demux>(newsock.mEventCore, newsock.mNetworkFd);
 
-    socket.mApplicationFd = fds[0];
-    socket.mAtpFd = fds[1];
-    socket.mNetworkFd = networkFd;
-
-    socket.mDemux = std::make_shared<Demux>(socket.mEventCore, socket.mNetworkFd,
-        [&](void* buffer, size_t length) -> void {
-            socket.NetworkRecvCallback(buffer, length);
-        });
-
-    socket.mStunClient = std::make_unique<Stun::Client>(networkFd);
+    newsock.mStunClient = std::make_shared<Stun::Client>(networkFd);
 
     // Lets run queryall twice to be a bit extra sure about NAT type
     for (int i = 0; i < 2; i++) {
-        if (socket.mStunClient->QueryAllServers() == -1) {
+        if (newsock.mStunClient->QueryAllServers() == -1) {
             returnCode = Error::NATQUERYFAILURE;
             goto clean;
         }
     }
 
-    if (socket.mStunClient->GetNatType() == Stun::NatType::kDependent) {
+    if (newsock.mStunClient->GetNatType() == Stun::NatType::kDependent) {
         returnCode = Error::NATDEPENDENT;
         goto clean;
     }
 
-    struct epoll_event epollNetwork;
-    bzero(&epollNetwork, sizeof(epollNetwork));
-    epollNetwork.data.fd = socket.mNetworkFd;
-    epollNetwork.events = 0;
+    struct epoll_event epollNat;
+    bzero(&epollNat, sizeof(epollNat));
+    // TODO: can use epoll_event.data to maintain RTO timer between calls?
+    epollNat.events = 0;
 
-    if ((socket.mNatKeepAliveCallback = socket.mEventCore->RegisterCallback(-1,
-             &epollNetwork, EventCore::kInvokeImmediately | EventCore::kSuspend,
+    if ((newsock.mNatKeepAliveCallback = newsock.mEventCore->RegisterCallback(-1,
+             &epollNat, EventCore::kInvokeImmediately | EventCore::kSuspend,
              [&](epoll_data_t data) -> mseconds_t {
-                 return socket.NatKeepAliveCallback(data);
+                 return newsock.NatKeepAliveCallback(data);
              }))
-        == -1) {
+        == 0) {
         returnCode = Error::EVENTCORE;
         goto clean;
     }
 
-    struct epoll_event epollApplication;
-    bzero(&epollApplication, sizeof(epollApplication));
-    epollApplication.data.fd = socket.mAtpFd;
-    epollApplication.events = EPOLLIN;
-    if ((socket.mApplicationRecvCallback = socket.mEventCore->RegisterCallback(socket.mAtpFd,
-             &epollApplication, EventCore::kSuspend,
-             [&](epoll_data_t data) -> mseconds_t {
-                 return socket.ApplicationRecvCallback(data);
-             }))
-        == -1) {
-        returnCode = Error::EVENTCORE;
-        goto clean;
-    }
+    newsock.mPunchTransmitCallback = 0;
+    newsock.mNetworkRecvCallback = 0;
+    newsock.mApplicationRecvCallback = 0;
 
-    if ((socket.mSignallingSocket = socket.mSignallingProvider->Socket()) < 0) {
+    bzero(&newsock.mPeerAddress, sizeof(newsock.mPeerAddress));
+
+    newsock.mSignallingProvider = signallingProvider;
+    if ((newsock.mSignallingSocket = newsock.mSignallingProvider->Socket()) < 0) {
         returnCode = Error::SIGNALLINGPROVIDER;
         goto clean;
     }
-    socket.mSignallingRecvCallback = 0;
+    newsock.mSignallingAddress = nullptr;
+    newsock.mSignallingRecvCallback = 0;
+    newsock.mWildcardRecvCallback = 0;
 
-    THROW_IF(socket.mEventCore->ResumeCallback(socket.mNatKeepAliveCallback) != 0);
-    THROW_IF(socket.mEventCore->ResumeCallback(socket.mApplicationRecvCallback) != 0);
+    newsock.mBacklog = 0;
 
-    return std::move(socket);
+    THROW_IF(newsock.mEventCore->ResumeCallback(newsock.mNatKeepAliveCallback) != 0);
+
+    return std::move(newsock);
 
 clean:
-    if (socket.mNatKeepAliveCallback)
-        socket.mEventCore->DeleteCallback(socket.mNatKeepAliveCallback);
+    if (newsock.mNatKeepAliveCallback)
+        newsock.mEventCore->DeleteCallback(newsock.mNatKeepAliveCallback);
 
-    if (socket.mApplicationRecvCallback)
-        socket.mEventCore->DeleteCallback(socket.mApplicationRecvCallback);
+    if (newsock.mApplicationRecvCallback)
+        newsock.mEventCore->DeleteCallback(newsock.mApplicationRecvCallback);
 
-    if (socket.mSignallingRecvCallback)
-        socket.mEventCore->DeleteCallback(socket.mSignallingRecvCallback);
+    if (newsock.mSignallingRecvCallback)
+        newsock.mEventCore->DeleteCallback(newsock.mSignallingRecvCallback);
 
-    close(socket.mApplicationFd);
-    close(socket.mAtpFd);
-    close(socket.mNetworkFd);
+    if (newsock.mPunchTransmitCallback)
+        newsock.mEventCore->DeleteCallback(newsock.mPunchTransmitCallback);
+
+    close(newsock.mApplicationFd);
+    close(newsock.mAtpFd);
+    close(newsock.mNetworkFd);
+    return std::unexpected(returnCode);
+}
+
+std::expected<SocketImpl, Error> SocketImpl::CloneToAccept(const struct sockaddr_in* peerAddress)
+{
+    Error returnCode = Error::SUCCESS;
+
+    SocketImpl newsock;
+    newsock.mState = State::PUNCH;
+    newsock.mEventCore = mEventCore;
+
+    newsock.mApplicationFd = -1;
+    newsock.mAtpFd = -1;
+    newsock.mNetworkFd = mNetworkFd;
+
+    newsock.mDemux = mDemux;
+
+    newsock.mStunClient = mStunClient;
+
+    struct epoll_event epollNetwork;
+    bzero(&epollNetwork, sizeof(epollNetwork));
+    epollNetwork.events = 0;
+
+    if ((newsock.mNatKeepAliveCallback = newsock.mEventCore->RegisterCallback(-1,
+             &epollNetwork, EventCore::kInvokeImmediately | EventCore::kSuspend,
+             [&](epoll_data_t data) -> mseconds_t {
+                 return newsock.NatKeepAliveCallback(data);
+             }))
+        == 0) {
+        returnCode = Error::EVENTCORE;
+        goto clean;
+    }
+
+    struct epoll_event epollPunch;
+    bzero(&epollPunch, sizeof(epollPunch));
+    epollPunch.events = 0;
+
+clean:
+    if (newsock.mNatKeepAliveCallback)
+        newsock.mEventCore->DeleteCallback(newsock.mNatKeepAliveCallback);
+
     return std::unexpected(returnCode);
 }
 
@@ -148,28 +183,72 @@ Error SocketImpl::Listen(int backlog)
              [&](epoll_data_t data) -> mseconds_t {
                  return SignallingRecvCallback(data);
              }))
-        < 0) {
+        == 0) {
         returnCode = Error::EVENTCORE;
+        goto clean;
+    }
+
+    if ((mWildcardRecvCallback = mDemux->RegisterWildcardCallback(
+             [&](void* buffer, size_t length) -> void {
+                 WildcardRecvCallback(buffer, length);
+             }))
+        == 0) {
+        returnCode = Error::DEMUX;
         goto clean;
     }
 
     mBacklog = backlog;
 
     // Lets flush any pending messages
-    while (mSignallingProvider->RecvResponse(mSignallingSocket, nullptr, nullptr) >= 0)
+    while (mSignallingProvider->Recv(mSignallingSocket, nullptr, nullptr, nullptr) >= 0)
         ;
 
     mState = State::LISTEN;
 
     THROW_IF(mEventCore->ResumeCallback(mSignallingRecvCallback) < 0);
-    
+
     return Error::SUCCESS;
 
 clean:
     if (mSignallingRecvCallback)
         mEventCore->DeleteCallback(mSignallingRecvCallback);
 
+    if (mWildcardRecvCallback)
+        mDemux->DeleteCallback(mWildcardRecvCallback);
+
     return returnCode;
+}
+
+mseconds_t SocketImpl::SignallingRecvCallback(epoll_data_t data)
+{
+    THROW_IF(mState != State::LISTEN);
+
+    struct sockaddr_atp peerAddressAtp;
+
+    size_t length = 1024;
+    char buffer[length];
+    if (mSignallingProvider->Recv(mSignallingSocket, buffer, &length, &peerAddressAtp) < 0)
+        return -1;
+    THROW_IF(length > sizeof(buffer)); // Signal was truncated
+    THROW_IF(!IsSignal(buffer, length));
+
+    struct signal sig;
+    THROW_IF(ReadSignal(buffer, length, &sig) < 0);
+    THROW_IF(sig.request == 0);
+    THROW_IF(sig.addr_family != AF_INET);
+
+    struct sockaddr_in peerAddressIn;
+    bzero(&peerAddressIn, sizeof(peerAddressIn));
+    peerAddressIn.sin_family = sig.addr_family;
+    peerAddressIn.sin_port = sig.addr_port;
+    peerAddressIn.sin_addr.s_addr = sig.addr_ipv4;
+
+    SocketImpl newsocket;
+    // TODO: incomplete
+}
+
+mseconds_t SocketImpl::PunchTransmitCallback(epoll_data_t data)
+{
 }
 
 }

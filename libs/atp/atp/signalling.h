@@ -11,6 +11,7 @@
 
 namespace Atp {
 
+// Signalling implementation *must* be reliable
 class ISignallingProvider {
 protected:
     ISignallingProvider(EventCore* eventCore)
@@ -34,18 +35,9 @@ public:
         const struct sockaddr_atp* dest)
         = 0;
     // Non-blocking
-    virtual int Recv(int sigfd, void* buf, size_t len,
+    virtual int Recv(int sigfd, void* buf, size_t* len,
         struct sockaddr_atp* source)
         = 0;
-
-    // TODO: It would be nice to have a signalling protocol, and then you sort of
-    // send/recv whatever messages you want and then code/decode them based off the protocol
-    // However, that is a decent bit of effort and so for a first step just sending connection
-    // requests/getting responses is enough, so using that as an abstraction for now
-    virtual int SendRequest(int sigfd, const struct sockaddr_in* payload,
-        const struct sockaddr_atp* dest);
-    virtual int RecvResponse(int sigfd, struct sockaddr_in* payload,
-        struct sockaddr_atp* source);
 
     virtual ~ISignallingProvider() = default;
 
@@ -54,5 +46,34 @@ protected:
     // socket used by the implementation is readable, i.e a msg has been recvd
     EventCore* mEventCore;
 };
+
+inline constexpr uint16_t kSignalMagic = 0xF6F9;
+
+struct __attribute__((packed)) signal {
+    uint16_t magic;
+    uint8_t zero;
+    union {
+        uint8_t type;
+        struct __attribute__((packed)) {
+            unsigned request : 1;
+            unsigned response : 1;
+            unsigned res2 : 1;
+            unsigned res3 : 1;
+            unsigned res4 : 1;
+            unsigned res5 : 1;
+            unsigned res6 : 1;
+            unsigned res7 : 1;
+        };
+    };
+    uint16_t addr_family;
+    uint16_t addr_port;
+    uint32_t addr_ipv4;
+};
+
+static_assert(sizeof(signal) == 12);
+
+int IsSignal(const void* buffer, size_t bufferLength);
+int BuildSignal(const struct signal* sig, void* buffer, size_t* bufferLength);
+int ReadSignal(const void* buffer, size_t bufferLength, struct signal* sig);
 
 }

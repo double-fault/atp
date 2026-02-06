@@ -18,10 +18,13 @@ namespace Atp {
 
 using mseconds_t = int;
 
+// TODO: Make most/all of these configurable using socket options
 namespace Config {
     static constexpr mseconds_t kNatKeepAliveTimeout = 5000;
     static constexpr size_t kMaxSocketCount = 32;
     static constexpr size_t kMaxBacklog = 64;
+    static constexpr mseconds_t kPunchInterval = 5000;
+    static constexpr mseconds_t kPunchTimeout = 3 * 60 * 1000; 
 };
 
 

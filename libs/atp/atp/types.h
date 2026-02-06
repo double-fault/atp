@@ -9,7 +9,7 @@ enum {
     IPPROTO_ATP = 111
 };
 
-struct sockaddr_atp {
+struct __attribute__((packed)) sockaddr_atp {
     sa_family_t sa_family;
     char hostname[16];
     char service[14];
@@ -33,6 +33,7 @@ enum class Error : int {
     BADFD = -14,
     ALREADYSET = -15, 
     NOTBOUND = -16,
+    DEMUX = -17,
 };
 
 // https://www.learncpp.com/cpp-tutorial/scoped-enumerations-enum-classes/#operatorplus

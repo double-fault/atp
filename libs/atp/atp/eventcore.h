@@ -28,6 +28,7 @@ public:
     // returns 0 on failure, as all callback identifiers must be positive
     callback_ident_t RegisterCallback(int fd, struct epoll_event* event, int flags,
             std::function<mseconds_t(epoll_data_t)> callback);
+    // TODO: ^^ should we pass epoll_data_t to the callback? It seems useless, so far.
 
     int SuspendCallback(callback_ident_t callbackIdentifier);
     int ResumeCallback(callback_ident_t callbackIdentifier);

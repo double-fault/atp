@@ -49,8 +49,6 @@ enum class State {
     TIME_WAIT,
 };
 
-// ISSUE: Lets say a server is servicing multiple clients. All packets come to the same udp socket.
-// How to demultiplex?
 struct __attribute__((packed)) atp_hdr {
     // byte-stream numbers, same as TCP
     uint32_t seq_num;
