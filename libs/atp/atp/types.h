@@ -1,5 +1,6 @@
 #pragma once
 
+#include <expected>
 #include <sys/socket.h>
 #include <type_traits>
 
@@ -34,6 +35,7 @@ enum class Error : int {
     ALREADYSET = -15, 
     NOTBOUND = -16,
     DEMUX = -17,
+    WOULDBLOCK = -18,
 };
 
 // https://www.learncpp.com/cpp-tutorial/scoped-enumerations-enum-classes/#operatorplus
@@ -42,6 +44,9 @@ constexpr auto operator+(T a) noexcept
 {
     return static_cast<std::underlying_type_t<T>>(a);
 }
+
+template <typename T>
+using Result = std::expected<T, Error>;
 
 const char* Strerror(Error err);
 Error ErrnoToErrorCode(int errnum); // Converts errno value to error codes

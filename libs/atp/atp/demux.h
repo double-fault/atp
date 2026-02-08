@@ -2,6 +2,8 @@
 
 #include "eventcore.h"
 
+#include <netinet/in.h>
+
 namespace Atp {
 
 // NOTE: Assumption is that no two sockets will Bind() the same atp address (sort
@@ -17,11 +19,11 @@ public:
 
     // Returns 0 on failure, all identifers should be positive
     using callback_ident_t = unsigned int;
-    callback_ident_t RegisterCallback(struct sockaddr_in* sourceAddress,
-        std::function<void(void* buffer, size_t length)> callback);
+    callback_ident_t RegisterCallback(const struct sockaddr_in* sourceAddress,
+        std::function<void(const void* buffer, size_t length)> callback);
 
-    callback_ident_t RegisterWildcardCallback(
-        std::function<void(void* buffer, size_t length)> callback);
+//    callback_ident_t RegisterWildcardCallback(
+ //       std::function<void(const void* buffer, size_t length)> callback);
 
     int DeleteCallback(callback_ident_t callbackIdentifier);
 };

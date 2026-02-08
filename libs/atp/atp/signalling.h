@@ -31,6 +31,7 @@ public:
     virtual int Bind(int sigfd, const struct sockaddr_atp* addr) = 0;
 
     // Non-blocking
+    // TODO: Returns negative error code on return? Not sure what Ive used where, check uses
     virtual int Send(int sigfd, const void* buf, size_t len,
         const struct sockaddr_atp* dest)
         = 0;
@@ -49,6 +50,12 @@ protected:
 
 inline constexpr uint16_t kSignalMagic = 0xF6F9;
 
+// NOTE: If both hosts are behind the same NAT (without hairpin support),
+// connecting through the public IP will fail. Without knowing the network 
+// topology, the solution for this is to initiate a connection for the private 
+// IP and the public IP both, and use whatever succeeds. The server running 
+// listen() must respond with the private IP if the signal received has a private 
+// IP.
 struct __attribute__((packed)) signal {
     uint16_t magic;
     uint8_t zero;
@@ -73,7 +80,9 @@ struct __attribute__((packed)) signal {
 static_assert(sizeof(signal) == 12);
 
 int IsSignal(const void* buffer, size_t bufferLength);
-int BuildSignal(const struct signal* sig, void* buffer, size_t* bufferLength);
 int ReadSignal(const void* buffer, size_t bufferLength, struct signal* sig);
+int BuildSignal(const struct signal* sig, void* buffer, size_t* bufferLength);
+// Uses a static buffer, not safe to reuse after repeated calls
+const void* BuildSignal(const struct signal* sig, size_t* bufferLength);
 
 }

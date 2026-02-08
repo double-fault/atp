@@ -7,7 +7,8 @@
 
 namespace Atp {
 
-// The engine thread IS the epoll() loop, which should be inside eventcore?
+// EventCore will need locking - the main thread can call register (etc.) callback 
+// functions, whereas the atp thread is the epoll() loop
 class EventCore {
 public:
     // Invoke callback immediately upon registration, irrespective of if 

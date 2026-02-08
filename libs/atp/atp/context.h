@@ -85,6 +85,9 @@ public:
     int Close(...) = delete;
     int Shutdown(...) = delete;
 
+    /* For internal ATP use, should I instead make SocketImpl a friend class and make these private? */
+    void TakeOwnership(std::unique_ptr<SocketImpl> socket);
+
 private:
     // Should SocketData be moved out of Context into global scope?
     // TODO: Rename to socket control block = SCB?

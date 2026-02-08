@@ -12,7 +12,7 @@ int BuildDatagram(const struct atp_hdr* header, const void* payload, size_t payl
     if (*datagramLength < sizeof(struct atp_hdr) + payloadSize)
         return -1;
 
-    THROW_IF(header->magic != kMagic);
+    THROW_IF(header->magic != kAtpMagic);
 
     char* ptr = static_cast<char*>(datagram);
     // BUG: This method of casting the pointer to a struct* is UB apparently
@@ -21,7 +21,7 @@ int BuildDatagram(const struct atp_hdr* header, const void* payload, size_t payl
 
     hptr->seq_num = htonl(header->seq_num);
     hptr->ack_num = htonl(header->ack_num);
-    hptr->control = header->control;
+    hptr->c = header->c;
     hptr->magic = header->magic;
     hptr->window = htons(header->magic);
 
@@ -47,11 +47,11 @@ int ReadDatagram(const void* datagram, size_t datagramLength, struct atp_hdr* he
 
     header->seq_num = ntohl(hptr->seq_num);
     header->ack_num = ntohl(hptr->ack_num);
-    header->control = hptr->control;
+    header->c = hptr->c;
     header->magic = hptr->magic;
     header->window = ntohs(hptr->window);
 
-    THROW_IF(header->magic != kMagic);
+    THROW_IF(header->magic != kAtpMagic);
 
     // PERF: memory copy :(
     *payloadSize = datagramLength - sizeof(struct atp_hdr);

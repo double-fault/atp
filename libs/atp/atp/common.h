@@ -1,6 +1,7 @@
 #pragma once 
 
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 
 namespace Atp {
@@ -25,6 +26,9 @@ namespace Config {
     static constexpr size_t kMaxBacklog = 64;
     static constexpr mseconds_t kPunchInterval = 5000;
     static constexpr mseconds_t kPunchTimeout = 3 * 60 * 1000; 
+
+    // HACK: Constant window size, for now. Need to implement properly later
+    static constexpr uint16_t kConstantWindow = 4096;
 };
 
 
