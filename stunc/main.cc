@@ -19,7 +19,7 @@ int main(int argc, char** argv)
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(6969);
+    addr.sin_port = htons(6967);
     assert(!bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)));
 
     Stun::Client stunClient(sockfd);

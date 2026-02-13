@@ -6,6 +6,9 @@
 
 namespace Atp {
 
+// TODO: this stuff should be in types.h not protocol.h right?
+// Because I think protocol.h = internal stuff
+// types.h = stuff exposed to atp user
 enum {
     IPPROTO_ATP = 111
 };

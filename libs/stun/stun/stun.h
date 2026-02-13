@@ -182,6 +182,7 @@ public:
     };
 
     Client(int sockfd);
+    Client(int sockfd, Timeout timeout);
     Client(int sockfd, const std::vector<Endpoint>& servers, Timeout timeout);
     ~Client() = default;
 

@@ -3,9 +3,11 @@
 #include "common.h"
 #include "demux.h"
 #include "eventcore.h"
+#include "posix_socket.h"
 #include "protocol.h"
 #include "signalling.h"
 #include "types.h"
+#include "nat_resolver.h"
 
 #include <queue>
 #include <stun/stun.h>
@@ -23,32 +25,35 @@ class Context;
 // I don't like the SocketImpl name, but I've spent 30 mins trying to cum up with
 // a better name :skull:
 // HACK: Keep thinking about locking.
-class SocketImpl final {
+// BUG: stun.QueryAllServers is blocking
+class AtpSocket final {
 private:
-    SocketImpl() = default;
-    Result<std::unique_ptr<SocketImpl>> CloneForConnection(
+    AtpSocket() = default;
+    Result<std::unique_ptr<AtpSocket>> CloneForConnection(
         const struct sockaddr_atp* peerAddressAtp,
         const struct sockaddr_in* peerAddrIn);
 
 public:
-    static Result<std::unique_ptr<SocketImpl>> Create(
-        EventCore* EventCore,
-        ISignallingProvider* signallingProvider);
+    static Result<std::unique_ptr<AtpSocket>> Create(
+        IEventCore* EventCore,
+        ISignallingProvider* signallingProvider,
+        INatResolver* natResolver,
+        ISocketFactory* socketFactory);
 
-    SocketImpl(const SocketImpl&) = delete;
-    SocketImpl& operator=(const SocketImpl&) = delete;
+    AtpSocket(const AtpSocket&) = delete;
+    AtpSocket& operator=(const AtpSocket&) = delete;
 
-    SocketImpl(SocketImpl&&) = default;
-    SocketImpl& operator=(SocketImpl&&) = default;
+    AtpSocket(AtpSocket&&) = default;
+    AtpSocket& operator=(AtpSocket&&) = default;
 
-    ~SocketImpl(); // TODO: what do I clean in destructor, and what in explicit close funcn?
+    ~AtpSocket(); // TODO: what do I clean in destructor, and what in explicit close funcn?
 
     int GetApplicationFd();
     const struct sockaddr_atp* GetPeerAddress();
 
     Error Bind(const struct sockaddr_atp* addr);
     Error Listen(int backlog);
-    Result<SocketImpl*> Accept(Context* context);
+    Result<AtpSocket*> Accept(Context* context);
     Error Connect(const struct sockaddr_atp* addr);
 
     Error GetSockOpt(int level, int optname, void* optval, socklen_t* optlen);
@@ -56,30 +61,24 @@ public:
 
 private:
     State mState { State::CLOSED };
-    EventCore* mEventCore {};
+    IEventCore* mEventCore {};
+    INatResolver* mNatResolver {};
+    ISocketFactory* mSocketFactory {};
 
     // NOTE: Layering:
     // (1) Application
-    // =    (Application FD) -- |
-    // =            (ATP FD) -- | (Connected unix domain socketpair)
+    // =    (Application socket) -- |
+    // =            (ATP socket) -- | (Connected unix domain socketpair)
     // (2) ATP Protocol Stack
-    // =     (Network FD)
+    // =     (Network socket)
     // (3) UDP/Kernel
-    int mApplicationFd { -1 };
-    int mAtpFd { -1 };
-    int mNetworkFd { -1 };
-
-    std::shared_ptr<Demux> mDemux {};
-
-    std::shared_ptr<Stun::Client> mStunClient {};
-    // TODO: connection keepalive callback - merge with Nat keepalive
-    // to have a single keepalive callback?
-    mseconds_t NatKeepAliveCallback(epoll_data_t data);
-    EventCore::callback_ident_t mNatKeepAliveCallback {};
+    std::unique_ptr<ISocket> mApplicationSocket {};
+    std::unique_ptr<ISocket> mAtpSocket {};
+    std::unique_ptr<ISocket> mNetworkSocket {};
 
     /* Active sockets */
 
-    SocketImpl* mPassiveOwner {}; // the passive socket owning this one, if any
+    AtpSocket* mPassiveOwner {}; // the passive socket owning this one, if any
 
     // Punching from the server side is done in the new cloned socket object,
     // so not in the passive listening socket object
@@ -87,7 +86,7 @@ private:
     EventCore::callback_ident_t mPunchThroughCallback {};
     int mPunchPacketCounter {};
 
-    void SetupSocketpair(SocketImpl* socket);
+    void SetupSocketpair(AtpSocket* socket);
 
     void NetworkRecvCallback(const void* buffer, size_t length);
     Demux::callback_ident_t mNetworkRecvCallback {};
@@ -127,11 +126,11 @@ private:
 
     // At any point, the sum of sizes of both should be <= backlog
     int mBacklog {};
-    std::queue<std::unique_ptr<SocketImpl>> mCompletedConnections {};
-    std::vector<std::unique_ptr<SocketImpl>> mIncompleteConnections {};
+    std::queue<std::unique_ptr<AtpSocket>> mCompletedConnections {};
+    std::vector<std::unique_ptr<AtpSocket>> mIncompleteConnections {};
 
-    void ConnectionEstablished(SocketImpl* socket);
-    void ConnectionClosed(SocketImpl* socket);
+    void ConnectionEstablished(AtpSocket* socket);
+    void ConnectionClosed(AtpSocket* socket);
 
     /* Protocol State */
     uint32_t mSequenceNumber {};

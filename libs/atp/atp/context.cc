@@ -32,7 +32,7 @@ int Context::Socket(int domain, int type, int protocol)
     if (mSockets.size() == Config::kMaxSocketCount)
         return +Error::MAXSOCKETS;
 
-    std::expected<SocketImpl, Error> socket = SocketImpl::Create(&mEventCore, mSignallingProvider);
+    std::expected<AtpSocket, Error> socket = AtpSocket::Create(&mEventCore, mSignallingProvider);
     if (!socket) 
         return +socket.error();
 

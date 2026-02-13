@@ -86,7 +86,7 @@ public:
     int Shutdown(...) = delete;
 
     /* For internal ATP use, should I instead make SocketImpl a friend class and make these private? */
-    void TakeOwnership(std::unique_ptr<SocketImpl> socket);
+    void TakeOwnership(std::unique_ptr<AtpSocket> socket);
 
 private:
     // Should SocketData be moved out of Context into global scope?
@@ -123,7 +123,7 @@ private:
     EventCore mEventCore;
     std::thread mEventLoopThread;
 
-    std::unordered_map<int, SocketImpl> mSockets; // application fd -> socket impl
+    std::unordered_map<int, AtpSocket> mSockets; // application fd -> socket impl
     std::set<int> mApplicationFds;
 };
 

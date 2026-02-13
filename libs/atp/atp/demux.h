@@ -6,6 +6,10 @@
 
 namespace Atp {
 
+// TODO: Why do we even need demux? Why not just create a new udp socket for every 
+// atp socket? Contact the STUN server, get its port, and then send a signal with 
+// that port?
+
 // NOTE: Assumption is that no two sockets will Bind() the same atp address (sort
 // of like no duplicate domain names - need to enforce the invariant, but that
 // comes later).

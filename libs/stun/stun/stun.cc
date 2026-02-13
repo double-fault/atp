@@ -156,6 +156,11 @@ Client::Client(int sockfd)
 {
 }
 
+Client::Client(int sockfd, Timeout timeout)
+    : Client(sockfd, kDefaultServers, timeout)
+{
+}
+
 Client::Client(int sockfd, const std::vector<Endpoint>& servers, Timeout timeout)
     : mSockfd { sockfd }
     , mServers { servers }

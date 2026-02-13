@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <sys/types.h>
+#include <vector>
 namespace Atp {
 
 inline constexpr uint8_t kAtpMagic = 0x69;
@@ -49,6 +50,8 @@ enum class State {
     TIME_WAIT,
 };
 
+// Probably some UB here, or at least compiler-extension dependent
+// But whatever, anonymous unions/structs are sexy
 union atp_control {
     uint8_t control;
     struct __attribute__((packed)) {
@@ -71,8 +74,6 @@ struct __attribute__((packed)) atp_hdr {
     // byte-stream numbers, same as TCP
     uint32_t seq_num;
     uint32_t ack_num;
-    // Probably some UB here, or at least compiler-extension dependent
-    // But whatever, anonymous unions/structs are sexy
     union atp_control c;
     uint8_t magic; // Is 8 bit magic insufficient?
     uint16_t window;
@@ -84,8 +85,15 @@ static_assert(sizeof(struct atp_hdr) == 12);
 // 20 = IP header, 8 = UDP header
 inline constexpr size_t kAtpPayloadMaxLimit = 576 - 20 - 8 - sizeof(struct atp_hdr);
 
+struct Segment {
+    struct atp_hdr mHeader;
+    std::vector<std::byte> mPayload;
+};
+
 bool IsAtpDatagram(const void* datagram, size_t datagramLength);
 
+// TODO: These are not "datagrams", rename to packets.
+// Actually NO, rename to "segment"
 // BUG: Following two functions have UB (see protocol.cc)
 int ReadDatagram(const void* datagram, size_t datagramLength, struct atp_hdr* header,
     void* payload, size_t* payloadSize);

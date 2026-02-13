@@ -2,6 +2,7 @@
 #include "common.h"
 #include "context.h"
 #include "eventcore.h"
+#include "nat_resolver.h"
 #include "protocol.h"
 #include "signalling.h"
 #include "types.h"
@@ -17,35 +18,29 @@
 
 namespace Atp {
 
-Result<std::unique_ptr<SocketImpl>> SocketImpl::Create(
-    EventCore* eventCore,
-    ISignallingProvider* signallingProvider)
+Result<std::unique_ptr<AtpSocket>> AtpSocket::Create(
+    IEventCore* eventCore,
+    ISignallingProvider* signallingProvider,
+    INatResolver* natResolver,
+    ISocketFactory* socketFactory)
 {
     Error returnCode = Error::UNKNOWN;
-
-    errno = 0;
-    int networkFd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (networkFd == -1)
-        return std::unexpected(ErrnoToErrorCode(errno));
 
     /* Members are initialized in the same order as their declarations in the header */
 
     // Yes, using the new operator with a unique_ptr
     // But since we'd like to keep the constructor private and this is a factory
     // function, its fine
-    std::unique_ptr<SocketImpl> newsock { new SocketImpl() };
+    std::unique_ptr<AtpSocket> newsock { new AtpSocket() };
     newsock->mState = State::CLOSED;
     newsock->mEventCore = eventCore;
+    newsock->mNatResolver = natResolver;
+    newsock->mSocketFactory = socketFactory;
 
-    errno = 0;
-    newsock->mApplicationFd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (newsock->mApplicationFd == -1) {
-        close(networkFd);
-        return std::unexpected(ErrnoToErrorCode(errno));
-    }
+    newsock->mApplicationSocket = socketFactory->Socket(AF_UNIX, SOCK_STREAM, 0);
 
-    newsock->mAtpFd = 0;
-    newsock->mNetworkFd = networkFd;
+    newsock->mAtpSocket = nullptr;
+    newsock->mNetworkSocket = socketFactory->Socket(AF_INET, SOCK_DGRAM, 0);
 
     newsock->mDemux = std::make_shared<Demux>(newsock->mEventCore, newsock->mNetworkFd);
 
@@ -119,15 +114,17 @@ clean:
     return std::unexpected(returnCode);
 }
 
-Result<std::unique_ptr<SocketImpl>> SocketImpl::CloneForConnection(
+Result<std::unique_ptr<AtpSocket>> AtpSocket::CloneForConnection(
     const struct sockaddr_atp* peerAddressAtp,
     const struct sockaddr_in* peerAddressIn)
 {
     Error returnCode = Error::SUCCESS;
 
-    std::unique_ptr<SocketImpl> newsock { new SocketImpl() };
+    std::unique_ptr<AtpSocket> newsock { new AtpSocket() };
     newsock->mState = State::PUNCH;
     newsock->mEventCore = mEventCore;
+    newsock->mNatResolver = mNatResolver;
+    newsock->mSocketFactory = mSocketFactory;
 
     newsock->mApplicationFd = -1;
     newsock->mAtpFd = -1;
@@ -206,27 +203,27 @@ clean:
 }
 
 // BUG: Locking required here, modifying data common to both threads
-Result<SocketImpl*> SocketImpl::Accept(Context* context)
+Result<AtpSocket*> AtpSocket::Accept(Context* context)
 {
     if (mState != State::LISTEN)
         return std::unexpected(Error::INVAL);
     if (mCompletedConnections.empty())
         return std::unexpected(Error::WOULDBLOCK);
 
-    std::unique_ptr<SocketImpl> socket = std::move(mCompletedConnections.front());
+    std::unique_ptr<AtpSocket> socket = std::move(mCompletedConnections.front());
     mCompletedConnections.pop();
 
     // BUG: Isn't there a race condition here?
     // Context takes ownership of the ptr -> say the socket gets closed
     // and gets destroyed before the return -> the returned pointer is dangling
     // Possible solution: Hold master lock from Context before calling SocketImpl::Accept
-    SocketImpl* sockptr = socket.get();
+    AtpSocket* sockptr = socket.get();
     context->TakeOwnership(std::move(socket));
 
     return sockptr;
 }
 
-Error SocketImpl::Connect(const struct sockaddr_atp* addr)
+Error AtpSocket::Connect(const struct sockaddr_atp* addr)
 {
     if (mSignallingRecvCallback != 0)
         return Error::ALREADYSET;
@@ -278,7 +275,7 @@ clean:
     return returnCode;
 }
 
-SocketImpl::~SocketImpl()
+AtpSocket::~AtpSocket()
 {
     close(mApplicationFd);
     close(mAtpFd);
@@ -298,7 +295,7 @@ SocketImpl::~SocketImpl()
     //    mEventCore->DeleteCallback(mWildcardRecvCallback);
 }
 
-Error SocketImpl::Bind(const struct sockaddr_atp* addr)
+Error AtpSocket::Bind(const struct sockaddr_atp* addr)
 {
     if (mSignallingAddress != nullptr)
         return Error::ALREADYSET;
@@ -310,7 +307,7 @@ Error SocketImpl::Bind(const struct sockaddr_atp* addr)
     return Error::SUCCESS;
 }
 
-Error SocketImpl::Listen(int backlog)
+Error AtpSocket::Listen(int backlog)
 {
     if (mState != State::CLOSED)
         return Error::ALREADYSET;
@@ -368,7 +365,7 @@ clean:
     return returnCode;
 }
 
-void SocketImpl::SetupSocketpair(SocketImpl* socket)
+void AtpSocket::SetupSocketpair(AtpSocket* socket)
 {
     int fds[2];
     THROW_IF(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0);
@@ -398,7 +395,7 @@ void SocketImpl::SetupSocketpair(SocketImpl* socket)
     //   return Error::EVENTCORE;
 }
 
-mseconds_t SocketImpl::SignallingRecvCallback(epoll_data_t data)
+mseconds_t AtpSocket::SignallingRecvCallback(epoll_data_t data)
 {
     THROW_IF(mState != State::LISTEN);
 
@@ -426,7 +423,7 @@ mseconds_t SocketImpl::SignallingRecvCallback(epoll_data_t data)
     return -1;
 }
 
-void SocketImpl::SignallingRecvRequest(const struct signal* request,
+void AtpSocket::SignallingRecvRequest(const struct signal* request,
     const struct sockaddr_atp* source)
 {
     if (mState != State::LISTEN) {
@@ -446,7 +443,7 @@ void SocketImpl::SignallingRecvRequest(const struct signal* request,
         return;
     }
 
-    Result<std::unique_ptr<SocketImpl>> newsock = CloneForConnection(source,
+    Result<std::unique_ptr<AtpSocket>> newsock = CloneForConnection(source,
         &peerAddressIn);
     if (!newsock) {
         PLOG_ERROR << Strerror(newsock.error());
@@ -485,7 +482,7 @@ void SocketImpl::SignallingRecvRequest(const struct signal* request,
     return;
 }
 
-void SocketImpl::SignallingRecvResponse(const struct signal* response,
+void AtpSocket::SignallingRecvResponse(const struct signal* response,
     const struct sockaddr_atp* source)
 {
     if (mState != State::CLOSED) {
@@ -532,7 +529,7 @@ clean:
         mDemux->DeleteCallback(mNetworkRecvCallback);
 }
 
-void SocketImpl::SendControlDatagram(union atp_control control)
+void AtpSocket::SendControlDatagram(union atp_control control)
 {
     struct atp_hdr header;
     bzero(&header, sizeof(header));
@@ -548,7 +545,7 @@ void SocketImpl::SendControlDatagram(union atp_control control)
     SendDatagram(datagram, datagramLength);
 }
 
-mseconds_t SocketImpl::PunchThroughCallback(epoll_data_t data)
+mseconds_t AtpSocket::PunchThroughCallback(epoll_data_t data)
 {
     if (mState != State::PUNCH || mState != State::THRU)
         return -1;
@@ -571,7 +568,7 @@ mseconds_t SocketImpl::PunchThroughCallback(epoll_data_t data)
     return Config::kPunchInterval;
 }
 
-void SocketImpl::NetworkRecvCallback(const void* buffer, size_t length)
+void AtpSocket::NetworkRecvCallback(const void* buffer, size_t length)
 {
     if (!IsAtpDatagram(buffer, length)) {
         PLOG_WARNING << "Received datagram which is not an ATP message!";
@@ -602,7 +599,7 @@ void SocketImpl::NetworkRecvCallback(const void* buffer, size_t length)
     }
 }
 
-void SocketImpl::NetworkRecvPunch(const struct atp_hdr* header,
+void AtpSocket::NetworkRecvPunch(const struct atp_hdr* header,
     const void* payload, size_t length)
 {
     if (header->c.punch) {
@@ -623,7 +620,7 @@ void SocketImpl::NetworkRecvPunch(const struct atp_hdr* header,
     }
 }
 
-void SocketImpl::NetworkRecvThru(const struct atp_hdr* header,
+void AtpSocket::NetworkRecvThru(const struct atp_hdr* header,
     const void* payload, size_t length)
 {
     if (header->c.punch) {
@@ -644,7 +641,7 @@ void SocketImpl::NetworkRecvThru(const struct atp_hdr* header,
     }
 }
 
-void SocketImpl::NetworkRecvEstablished(const struct atp_hdr* header,
+void AtpSocket::NetworkRecvEstablished(const struct atp_hdr* header,
     const void* payload, size_t length)
 {
     if (header->c.punch) {
@@ -656,7 +653,7 @@ void SocketImpl::NetworkRecvEstablished(const struct atp_hdr* header,
     }
 }
 
-void SocketImpl::ConnectionEstablished(SocketImpl* socket)
+void AtpSocket::ConnectionEstablished(AtpSocket* socket)
 {
     auto it = mIncompleteConnections.begin();
     while (it != mIncompleteConnections.end() && it->get() != socket)
@@ -668,7 +665,7 @@ void SocketImpl::ConnectionEstablished(SocketImpl* socket)
     }
 }
 
-void SocketImpl::ConnectionClosed(SocketImpl* socket)
+void AtpSocket::ConnectionClosed(AtpSocket* socket)
 {
     auto it = mIncompleteConnections.begin();
     while (it != mIncompleteConnections.end() && it->get() != socket)
